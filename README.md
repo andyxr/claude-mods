@@ -4,7 +4,7 @@ A small marketplace of Claude Code mods by Andy Deighton.
 
 | Mod | What it does |
 | --- | --- |
-| `branch-live` | Live, bottom-up git graph of the current branch and commit in a side pane |
+| `branch-live` | Live, bottom-up git graph of the current branch and commit in a side pane: drawn in cells in the terminal, and as a scrollable SVG with hover details in the desktop app |
 | `context-gauge` | Status line gauge: context tokens left and tokens until autocompact, plus a session timer above the prompt |
 | `context-handoff` | Warns above the prompt when context gets long and offers a fresh session seeded with a hand-off (`/handyoff` shows it on demand) |
 | `invaders` | `/invade` opens a game of Space Invaders in a side pane |
@@ -26,22 +26,9 @@ From a shell:
 claude plugin install branch-live --marketplace andyxr/claude-mods
 ```
 
+In the Claude desktop app: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `andyxr/claude-mods`, then **Add plugin**. A mod installed from a shell at user scope also loads in the desktop app.
+
 Swap `branch-live` for any mod name above. You don't need to clone anything: the install fetches the repo.
-
-## Developing
-
-Run a local copy without installing it:
-
-```
-claude --plugin-dir ./plugins/branch-live
-```
-
-Before pushing a change, bump `version` in that mod's `.claude-plugin/plugin.json`, then:
-
-```
-claude plugin validate ./plugins/<mod>
-claude plugin test ./plugins/<mod>
-```
 
 ## Licence
 

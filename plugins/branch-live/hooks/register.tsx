@@ -5,6 +5,7 @@ import type { RepoEvent, Snapshot } from '../types'
 import { diffRefs, git, parseStatus, readCommits, readRefs } from './git'
 import type { Run } from './git'
 import { paint } from './graph'
+import { CELL_H, CELL_W, describe, graph, status } from './svg'
 
 const PANE = 'branch-live'
 const TITLE = 'Branch'
@@ -54,8 +55,10 @@ async function poll($: EngineInterface) {
     const root = (await git(run, ['rev-parse', '--show-toplevel']).catch(() => '')).trim() || null
     const before = refs
     refs = nextRefs
+    let follow = false
     await update($, snap, s => {
       const firstLoad = before === null || s.root !== root
+      follow = firstLoad || s.head.oid !== head.oid || s.head.branch !== head.branch
       const fresh: Record<string, number> = {}
       const known = new Set(s.commits.map(c => c.hash))
       for (const c of commits) {
@@ -73,12 +76,16 @@ async function poll($: EngineInterface) {
       }
       return { error: null, root, head, commits, fresh, events }
     })
+    if (follow) await toEnd($)
   } catch (err) {
     await update($, snap, s => ({ ...s, error: String((err as Error)?.message ?? err) }))
   } finally {
     busy = false
   }
 }
+
+/** Scrolls the pane to HEAD and the status bar: history runs upwards from there. */
+const toEnd = ($: EngineInterface) => $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -94,6 +101,7 @@ export const register: Register = on => {
   on('command.run', { command: 'branch-live' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
     void poll($)
+    await toEnd($)
     return { text: 'Branch pane opened.' }
   })
 
@@ -106,24 +114,25 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const s = await read($, snap)
-    await read($, now)
-    const t = Date.now()
     if (e.surface === 'terminal') {
+      // Only the cells need the tick: the SVG runs its own glow and fade.
+      await read($, now)
       const { Raster } = $.ui.resolve(e)
       const w = Math.max(10, Math.min(512, e.props.bodyColumns))
       const rows = Math.max(6, Math.min(256, e.props.scroll.bodyRows))
-      return <Raster key="graph" columns={w} rows={rows} cells={paint(s, w, rows, t).encode()} />
+      return <Raster key="graph" columns={w} rows={rows} cells={paint(s, w, rows, Date.now()).encode()} />
     }
-    const { Box, Text } = $.ui.resolve(e)
-    const rows = s.commits.slice(0, 40).reverse()
+    const { Box, Svg } = $.ui.resolve(e)
+    const width = Math.max(240, e.props.bodyColumns * CELL_W)
+    const t = Date.now()
+    const foot = status(s, width, t)
+    const pieces = [...graph(s, width, Math.max(0, e.props.scroll.bodyRows * CELL_H - foot.height), t), foot]
+    // An interactive Svg is drawn in a frame that does not size itself from the markup: without both, it is 300 by 150.
     return (
       <Box flexDirection="column">
-        {rows.map(c => (
-          <Text dimColor={c.hash !== s.head.oid}>
-            {c.hash === s.head.oid ? '◉' : '●'} {c.hash.slice(0, 7)} {c.refs.length ? `(${c.refs.join(', ')}) ` : ''}{c.subject}
-          </Text>
+        {pieces.map((p, i) => (
+          <Svg source={p.svg} alt={i === 0 ? describe(s) : ' '} width={width} height={p.height} isInteractive />
         ))}
-        <Text bold>⎇ {s.head.branch ?? 'detached'} · {s.head.oid?.slice(0, 7) ?? 'no commits'}</Text>
       </Box>
     )
   })

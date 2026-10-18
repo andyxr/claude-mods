@@ -1,112 +1,15 @@
-// Lane layout and cell painting for the bottom-up graph. Newest commit sits at the bottom; history grows upwards.
-import type { GraphCommit, Snapshot } from '../types'
-import { mergedBranchName } from './git'
+// Cell painting for the terminal's bottom-up graph. Newest commit sits at the bottom; history grows upwards.
+import type { Snapshot } from '../types'
+import { DEFAULT, DIM, FADE_MS, FAINT, HEAD_ROW, INK, age, badges, glowOf, headColor, headline, layout, mix, nodeKind, ticker, worktree } from './model'
+import type { NodeKind } from './model'
 
-export const DEFAULT = 0x01000000
-const DIM = 0x7c8594
-const FAINT = 0x4a5160
-const TRUNK = 0x22d3ee
-const HEAD_ROW = 0x14283a
-const GOOD = 0x4ade80
-const WARN = 0xfbbf24
-const BAD = 0xf87171
-const INK = 0x0b0f17
+export { DEFAULT }
 
 const U = 1, D = 2, L = 4, R = 8
 const BOX: Record<number, string> = {
   [U]: '│', [D]: '│', [U | D]: '│', [L]: '─', [R]: '─', [L | R]: '─',
   [D | R]: '╭', [D | L]: '╮', [U | R]: '╰', [U | L]: '╯',
   [U | D | R]: '├', [U | D | L]: '┤', [D | L | R]: '┬', [U | L | R]: '┴', [U | D | L | R]: '┼',
-}
-
-function fnv(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-
-function hsl(h: number, s: number, l: number): number {
-  s /= 100
-  l /= 100
-  const k = (n: number) => (n + h / 30) % 12
-  const a = s * Math.min(l, 1 - l)
-  const f = (n: number) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))))
-  return (f(0) << 16) | (f(8) << 8) | f(4)
-}
-
-const TRUNKS = new Set(['main', 'master', 'trunk', 'develop'])
-
-/** Stable color per branch name (brancher's scheme): trunk cyan, others skip the cyan band. */
-export function branchColor(name: string): number {
-  if (TRUNKS.has(name.replace(/^[^/]+\//, '')) || TRUNKS.has(name)) return TRUNK
-  let hue = fnv(name) % 300
-  if (hue > 165) hue += 60
-  return hsl(hue, 75, 62)
-}
-
-export function mix(a: number, b: number, t: number): number {
-  const ch = (x: number, s: number) => (x >> s) & 0xff
-  const m = (s: number) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t)
-  return (m(16) << 16) | (m(8) << 8) | m(0)
-}
-
-type Node = { idx: number; lane: number; color: number }
-type Edge = { child: number; childLane: number; lane: number; parent: string; color: number }
-export type Layout = { nodes: Node[]; edges: Edge[]; lanes: number; rowOf: Map<string, number> }
-
-const branchOf = (c: GraphCommit) => {
-  const head = c.refs.find(r => r.startsWith('heads/')) ?? c.refs.find(r => r.startsWith('remotes/'))
-  return head?.replace(/^heads\//, '').replace(/^remotes\//, '')
-}
-
-/** git-graph style lane packing over commits listed newest first; `head` is pinned to lane 0. */
-export function layout(commits: GraphCommit[], head: string | null): Layout {
-  const cols: (string | null)[] = []
-  const colColor: number[] = []
-  const nodes: Node[] = []
-  const edges: Edge[] = []
-  const rowOf = new Map(commits.map((c, i) => [c.hash, i]))
-  const free = (avoid = -1) => {
-    const i = cols.findIndex((v, j) => v === null && j !== avoid)
-    return i >= 0 ? i : cols.length
-  }
-  if (head && rowOf.has(head)) {
-    cols[0] = head
-    colColor[0] = -1
-  }
-  let lanes = 0
-  commits.forEach((c, idx) => {
-    const matches = cols.flatMap((v, j) => (v === c.hash ? [j] : []))
-    let lane: number
-    if (matches.length) {
-      lane = matches[0]
-      for (const m of matches.slice(1)) cols[m] = null
-    } else {
-      lane = free()
-      colColor[lane] = -1
-    }
-    const name = branchOf(c)
-    if (colColor[lane] === -1 || colColor[lane] === undefined) colColor[lane] = name ? branchColor(name) : branchColor(c.hash)
-    const color = colColor[lane]
-    nodes.push({ idx, lane, color })
-    cols[lane] = c.parents[0] ?? null
-    if (c.parents[0]) edges.push({ child: idx, childLane: lane, lane, parent: c.parents[0], color })
-    const merged = mergedBranchName(c.subject)
-    c.parents.slice(1).forEach(p => {
-      let pl = cols.indexOf(p)
-      if (pl < 0) {
-        pl = free(lane)
-        cols[pl] = p
-        colColor[pl] = branchColor(merged ?? p)
-      }
-      edges.push({ child: idx, childLane: lane, lane: pl, parent: p, color: colColor[pl] })
-    })
-    lanes = Math.max(lanes, cols.length)
-  })
-  return { nodes, edges, lanes, rowOf }
 }
 
 /** A grid of [codePoint, fg, bg] cells. */
@@ -195,68 +98,32 @@ export function base64(bytes: Uint8Array): string {
   return out
 }
 
-function age(sec: number, now: number): string {
-  const d = Math.max(0, Math.round(now / 1000 - sec))
-  if (d < 60) return `${d}s`
-  if (d < 3600) return `${Math.floor(d / 60)}m`
-  if (d < 86400) return `${Math.floor(d / 3600)}h`
-  if (d < 86400 * 30) return `${Math.floor(d / 86400)}d`
-  if (d < 86400 * 365) return `${Math.floor(d / (86400 * 30))}mo`
-  return `${Math.floor(d / (86400 * 365))}y`
-}
-
-function clock(ms: number): string {
-  const t = new Date(ms)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`
-}
-
-const GLOW_MS = 6000
-const EVENT_GLYPH: Record<string, [string, number]> = {
-  commit: ['●', GOOD], merge: ['◆', 0xc084fc], branch: ['⑂', TRUNK], delete: ['✕', BAD], switch: ['⇄', WARN], move: ['↻', DIM], tag: ['◈', WARN],
-}
+const GLYPH: Record<NodeKind, string> = { head: '◉', merge: '◆', fresh: '✦', commit: '●' }
 
 /** Paints the whole pane: graph growing up from the bottom, event ticker, then the HEAD status bar. */
 export function paint(snap: Snapshot, w: number, h: number, now: number): Canvas {
   const cv = new Canvas(w, h)
   const head = snap.head
-  const headColor = head.branch ? branchColor(head.branch) : WARN
+  const hc = headColor(head)
 
   // Footer: the current branch and commit, at the very bottom.
   const footer = 3
   const fy = h - footer
-  for (let x = 0; x < w; x++) cv.set(x, fy, '▁', headColor)
+  for (let x = 0; x < w; x++) cv.set(x, fy, '▁', hc)
   let x = 0
   const by = h - 2
-  cv.fillBg(by, 0, w, mix(headColor, 0, 0.82))
-  x = cv.text(x, by, ` ⎇ ${head.branch ?? 'detached HEAD'} `, INK, headColor)
-  x = cv.text(x, by, ` ◉ ${head.oid ? head.oid.slice(0, 7) : 'no commits'} `, headColor, mix(headColor, 0, 0.82))
-  if (head.upstream) {
-    x = cv.text(x, by, ` → ${head.upstream}`, DIM)
-    if (head.ahead) x = cv.text(x + 1, by, `⇡${head.ahead}`, GOOD)
-    if (head.behind) x = cv.text(x + 1, by, `⇣${head.behind}`, WARN)
-    if (!head.ahead && !head.behind) x = cv.text(x + 1, by, '≡', DIM)
-  }
-  const ty = h - 1
-  const clean = !head.staged && !head.unstaged && !head.untracked && !head.conflicted
-  if (clean) cv.text(1, ty, '✓ working tree clean', GOOD)
-  else {
-    let tx = 1
-    if (head.conflicted) tx = cv.text(tx, ty, `✕ ${head.conflicted} conflicted  `, BAD)
-    if (head.staged) tx = cv.text(tx, ty, `✚ ${head.staged} staged  `, GOOD)
-    if (head.unstaged) tx = cv.text(tx, ty, `✎ ${head.unstaged} modified  `, WARN)
-    if (head.untracked) tx = cv.text(tx, ty, `? ${head.untracked} untracked`, DIM)
-  }
+  cv.fillBg(by, 0, w, mix(hc, 0, 0.82))
+  for (const s of headline(head)) x = s.chip ? cv.text(x, by, s.text, INK, s.color) : cv.text(x, by, s.text, s.color)
+  let tx = 1
+  for (const s of worktree(head)) tx = cv.text(tx, h - 1, s.text, s.color)
 
   // Event ticker, newest just above the footer.
-  const evRows = Math.min(3, snap.events.length, Math.max(0, h - footer - 6))
-  const evs = snap.events.slice(-evRows)
+  const evs = ticker(snap.events, Math.min(3, h - footer - 6))
   evs.forEach((ev, i) => {
     const y = fy - evs.length + i
-    const fade = Math.min(1, (now - ev.at) / 20000)
-    const [glyph, col] = EVENT_GLYPH[ev.kind] ?? ['•', DIM]
-    const ex = cv.text(1, y, clock(ev.at) + ' ', mix(DIM, FAINT, fade))
-    const gx = cv.text(ex, y, glyph + ' ', mix(col, FAINT, fade * 0.7))
+    const fade = Math.min(1, (now - ev.at) / FADE_MS)
+    const ex = cv.text(1, y, ev.clock + ' ', mix(DIM, FAINT, fade))
+    const gx = cv.text(ex, y, ev.glyph + ' ', mix(ev.color, FAINT, fade * 0.7))
     cv.text(gx, y, ev.text, mix(0xe5e7eb, DIM, fade), undefined, w - 1)
   })
 
@@ -315,28 +182,22 @@ export function paint(snap: Snapshot, w: number, h: number, now: number): Canvas
     const y = yOf(n.idx)
     if (y < 0) continue
     const nx = clipX(xOf(n.lane))
-    const isHead = c.hash === head.oid
-    const born = snap.fresh[c.hash]
-    const glow = born ? Math.max(0, 1 - (now - born) / GLOW_MS) : 0
+    const glow = glowOf(snap.fresh[c.hash], now)
+    const kind = nodeKind(c, head.oid, glow)
+    const isHead = kind === 'head'
     const rowBg = isHead ? HEAD_ROW : glow > 0 ? mix(0x000000, n.color, glow * 0.45) : undefined
     if (rowBg !== undefined) cv.fillBg(y, 0, w, rowBg)
-    const glyph = isHead ? '◉' : c.parents.length > 1 ? '◆' : glow > 0 ? '✦' : '●'
-    cv.set(nx, y, glyph, glow > 0 ? mix(n.color, 0xffffff, glow * 0.6) : n.color)
+    cv.set(nx, y, GLYPH[kind], glow > 0 ? mix(n.color, 0xffffff, glow * 0.6) : n.color)
 
     // Label: ref badges, short hash, subject, age right-aligned.
     let lx = gw + 1
     const right = w - 1
     const when = age(c.time, now)
     const textMax = right - when.length - 1
-    if (isHead) lx = cv.text(lx, y, head.branch ? ' HEAD ' : ' HEAD (detached) ', INK, WARN, textMax) + 1
-    for (const ref of c.refs) {
+    for (const b of badges(c, head)) {
       if (lx >= textMax - 4) break
-      const isTag = ref.startsWith('tags/')
-      const isRemote = ref.startsWith('remotes/')
-      const name = ref.replace(/^(heads|tags|remotes)\//, '')
-      const col = isTag ? WARN : branchColor(name.replace(/^[^/]+\//, isRemote ? '' : '$&'))
-      const label = isTag ? ` ◈ ${name} ` : ` ${name} `
-      lx = isRemote ? cv.text(lx, y, label, col, mix(col, 0, 0.75), textMax) + 1 : cv.text(lx, y, label, INK, col, textMax) + 1
+      const label = ` ${b.text} `
+      lx = (b.kind === 'remote' ? cv.text(lx, y, label, b.color, mix(b.color, 0, 0.75), textMax) : cv.text(lx, y, label, INK, b.color, textMax)) + 1
     }
     lx = cv.text(lx, y, c.hash.slice(0, 7) + ' ', DIM, rowBg, textMax)
     cv.text(lx, y, c.subject, isHead || glow > 0 ? 0xffffff : DEFAULT, rowBg, textMax)
