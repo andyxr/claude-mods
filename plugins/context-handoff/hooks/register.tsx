@@ -26,8 +26,9 @@ async function handOff($: EngineInterface) {
   try {
     const reply = await $.model.fork({ prompt: HANDOFF_PROMPT })
     if (!reply.isAnswered) throw new Error(`hand-off not written: ${reply.reason}`)
-    const home = await $.env.get('HOME')
-    if (home === undefined) throw new Error('HOME is unset')
+    // Native Windows usually has no HOME, only USERPROFILE.
+    const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
+    if (home === undefined) throw new Error('HOME and USERPROFILE are unset')
     const path = handoffPath(home, await $.session.root(), await $.clock.now())
     await $.fs.write(path, reply.text)
     await $.command.run({ command: 'clear', args: '' })

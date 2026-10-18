@@ -42,3 +42,7 @@ Before pushing a change, bump `version` in that mod's `.claude-plugin/plugin.jso
 claude plugin validate ./plugins/<mod>
 claude plugin test ./plugins/<mod>
 ```
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

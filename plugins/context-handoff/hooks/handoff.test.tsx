@@ -80,6 +80,25 @@ test('hand-off writes the file, clears, and sends the prompt', async ($, on) => 
   expect(await ui.find({ key: 'handoff' })).toBeUndefined()
 })
 
+test('hand-off falls back to USERPROFILE when HOME is unset', async ($, on) => {
+  let written = ''
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => { const { Box } = $.ui.resolve(e); return <Box /> })
+  on('model.fork', () => ({ value: { isAnswered: true, text: '## Goal\nship it', usage: {} } }) as any)
+  on('env.get', ($, e) => ({ value: e.name === 'USERPROFILE' ? '/Users/w' : undefined }))
+  on('session.root', () => ({ value: '/dev/sdss-quasar' }))
+  on('clock.now', () => ({ value: Date.UTC(2026, 9, 7, 9, 5, 3) }))
+  on('fs.write', ($, e: any) => { written = e.path.replace(/^[A-Za-z]:/, '').replaceAll('\\', '/'); return { value: undefined } as any })
+  on('command.run', () => ({}) as any)
+  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('ui.toast', () => ({ value: undefined }) as any)
+
+  await measure($, 150_000)
+  const ui = await $.ui.mount({ plugin: 'context-handoff', surface: 'terminal', component: 'AbovePrompt', props: {} } as any)
+  await ui.press({ key: 'handoff' })
+  expect(written).toBe('/Users/w/.claude/handoffs/sdss-quasar-2026-10-07T09-05-03-000Z.md')
+})
+
 test('/handyoff shows the band on demand', async ($, on) => {
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 30_000, window: 200_000 }, rateLimits: [] } }) as any)
   on('ui.render', ($, e) => { const { Box } = $.ui.resolve(e); return <Box /> })
