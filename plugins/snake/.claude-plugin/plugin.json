@@ -1,0 +1,1 @@
+{ "name": "snake", "version": "0.1.0", "author": { "name": "Andy Deighton" }, "description": "/snake opens a game of Snake in a side pane; closing the pane ends the game" }

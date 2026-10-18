@@ -1,0 +1,1 @@
+{ "name": "context-handoff", "version": "0.1.0", "author": { "name": "Andy Deighton" }, "description": "Warns above the prompt when context gets long and offers a fresh session seeded with a hand-off", "types": "./types/index.d.ts" }

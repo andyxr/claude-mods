@@ -1,0 +1,1 @@
+{ "name": "invaders", "version": "0.1.0", "author": { "name": "Andy Deighton" }, "description": "/invade opens a game of Space Invaders in a side pane; closing the pane ends the game" }

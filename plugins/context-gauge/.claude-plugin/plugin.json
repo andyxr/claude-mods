@@ -1,0 +1,1 @@
+{ "name": "context-gauge", "version": "0.1.0", "author": { "name": "Andy Deighton" }, "description": "Status line gauge: context tokens left and tokens until autocompact, plus session timer above the prompt", "types": "./types/index.d.ts" }
