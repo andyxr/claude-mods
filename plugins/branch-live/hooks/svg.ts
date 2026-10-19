@@ -1,6 +1,7 @@
 // SVG painting for the surfaces that draw vectors (desktop, mobile): the same bottom-up graph as graph.ts, with curves,
 // hover tooltips, and the arrival glow and ticker fade run by SMIL so no redraw timer is needed.
-// The whole history is drawn and the pane scrolls over it; it is cut into stacked pieces, as one Svg holds at most MAX_SVG.
+// The whole history is drawn and the pane scrolls over it; it is cut into stacked pieces, as one Svg holds at most MAX_SVG
+// characters and MAX_H pixels.
 import type { GraphCommit, Snapshot } from '../types'
 import { BAD, DIM, FADE_MS, FAINT, GLOW_MS, HEAD_ROW, INK, age, badges, glowOf, headColor, headline, layout, mix, nodeKind, ticker, worktree } from './model'
 
@@ -9,6 +10,8 @@ export const CELL_W = 8
 export const CELL_H = 18
 /** The Svg element refuses markup longer than this. */
 export const MAX_SVG = 131072
+/** The desktop drops an Svg taller (or wider) than this many CSS px, with no word of it. */
+export const MAX_H = 4096
 
 /** One Svg of the stack, `height` CSS pixels tall. */
 export type Piece = { svg: string; height: number }
@@ -19,7 +22,7 @@ const PAD = 12
 const TICK = 18
 const BAR = 26
 const LINE = 20
-const CHUNK = 150
+const CHUNK = Math.floor(MAX_H / ROW)
 const BG = 0x0d1117
 const FG = 0xe5e7eb
 
@@ -35,9 +38,13 @@ const STYLE =
   `.h{font-size:11px;fill:${hex(DIM)}}.s{font-size:12px;fill:${hex(FG)}}.s.b{fill:#fff;font-weight:600}` +
   `.a{font-size:11px;fill:${hex(FAINT)};text-anchor:end}.t{font-size:11px;font-weight:600}.f{font-size:12px;white-space:pre}`
 
-/** A document showing rows `y` to `y + h` of a drawing laid out `w` wide. */
+/**
+ * A document showing rows `y` to `y + h` of a drawing laid out `w` wide.
+ * The frame is held to the pane's width, so it can come out narrower than `w`: `slice` then clips the right edge, where
+ * the default would shrink the drawing and open bands above and below it, gaps between the pieces.
+ */
 const doc = (w: number, y: number, h: number, body: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 ${y} ${w} ${h}" overflow="hidden" font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif">` +
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 ${y} ${w} ${h}" preserveAspectRatio="xMinYMin slice" overflow="hidden" font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif">` +
   `<style>${STYLE}</style><rect x="0" y="${y}" width="${w}" height="${h}" fill="${hex(BG)}"/>${body}</svg>`
 
 /** Up from (xc, yc) to (xp, yp): turns into lane xl just above the child, runs up it, turns into the parent's lane just below the parent. */
@@ -106,11 +113,11 @@ export function status(snap: Snapshot, w: number, now: number): Piece {
  */
 export function graph(snap: Snapshot, w: number, minH: number, now: number): Piece[] {
   if (snap.error) {
-    const h = Math.max(ROW * 2, minH)
+    const h = Math.min(MAX_H, Math.max(ROW * 2, minH))
     return [{ svg: doc(w, 0, h, `<text x="${PAD}" y="${h - 16}" class="s" style="fill:${hex(BAD)}">${esc(snap.error)}</text>`), height: h }]
   }
   const H = Math.max(snap.commits.length * ROW, minH)
-  if (!snap.commits.length) return H > 0 ? [{ svg: doc(w, 0, H, ''), height: H }] : []
+  if (!snap.commits.length) return H > 0 ? [{ svg: doc(w, 0, Math.min(H, MAX_H), ''), height: Math.min(H, MAX_H) }] : []
   const items = draw(snap, w, H, now)
   for (let rows = CHUNK; ; rows = Math.max(1, Math.floor(rows / 2))) {
     const pieces: Piece[] = []
@@ -221,3 +228,6 @@ export function describe(snap: Snapshot): string {
   const latest = snap.commits.find(c => c.hash === head.oid)?.subject
   return `Git graph: ${head.branch ?? 'detached HEAD'} at ${at}${latest ? `, "${latest}"` : ''}; ${snap.commits.length} commits loaded.`
 }
+
+/** What the status bar says, for a reader that cannot see it. */
+export const describeStatus = (snap: Snapshot) => [...headline(snap.head), ...worktree(snap.head)].map(s => s.text.trim()).filter(Boolean).join(' · ')

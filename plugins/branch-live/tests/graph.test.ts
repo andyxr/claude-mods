@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import type { GraphCommit, Snapshot } from '../types'
 import { diffRefs, mergedBranchName, parseStatus } from '../hooks/git'
 import { layout } from '../hooks/model'
-import { MAX_SVG, graph, status } from '../hooks/svg'
+import { MAX_H, MAX_SVG, describeStatus, graph, status } from '../hooks/svg'
 import { paint } from '../hooks/graph'
 
 const c = (hash: string, parents: string[], refs: string[] = [], subject = hash): GraphCommit => ({ hash, parents, author: 'a', time: 0, subject, refs })
@@ -87,7 +87,9 @@ test('draws all of a long history in pieces, each under the element limit', () =
   const many = Array.from({ length: 300 }, (_, i) => c(`h${i}`, i < 299 ? [`h${i + 1}`] : [], [], 'x'.repeat(400)))
   const pieces = graph({ ...repo, head: { ...repo.head, oid: 'h0' }, commits: many }, 1200, 0, 1000)
   expect(pieces.length).toBeGreaterThan(1)
+  // The desktop drops an Svg past either bound without a word: HEAD went missing that way.
   for (const p of pieces) expect(p.svg.length).toBeLessThanOrEqual(MAX_SVG)
+  for (const p of pieces) expect(p.height).toBeLessThanOrEqual(MAX_H)
   expect(pieces.reduce((h, p) => h + p.height, 0)).toBe(300 * 26)
   // Every commit drawn once: a row never straddles a join.
   expect(pieces.map(p => p.svg).join('').match(/<g class="row">/g)).toHaveLength(300)
@@ -99,6 +101,14 @@ test('the pane draws cells in the terminal and SVG elsewhere', async $ => {
   expect((await term.drawn()).type).toBe('Raster')
   for (const surface of ['desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ plugin: 'branch-live', surface, component: 'Pane', requestId: 'branch-live', props })
-    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(2)
+    const svgs = await ui.findAll({ type: 'Svg' })
+    expect(svgs).toHaveLength(2)
+    // The desktop drops an Svg whose alt is blank.
+    for (const svg of svgs) expect(svg.props.alt.trim()).not.toBe('')
   }
+})
+
+test('says what the status bar says', () => {
+  expect(describeStatus(repo)).toContain('main')
+  expect(describeStatus(repo)).toContain('1 staged')
 })

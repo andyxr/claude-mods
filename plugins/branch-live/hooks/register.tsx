@@ -5,7 +5,7 @@ import type { RepoEvent, Snapshot } from '../types'
 import { diffRefs, git, parseStatus, readCommits, readRefs } from './git'
 import type { Run } from './git'
 import { paint } from './graph'
-import { CELL_H, CELL_W, describe, graph, status } from './svg'
+import { CELL_H, CELL_W, describe, describeStatus, graph, status } from './svg'
 
 const PANE = 'branch-live'
 const TITLE = 'Branch'
@@ -123,16 +123,19 @@ export const register: Register = on => {
       return <Raster key="graph" columns={w} rows={rows} cells={paint(s, w, rows, Date.now()).encode()} />
     }
     const { Box, Svg } = $.ui.resolve(e)
-    const width = Math.max(240, e.props.bodyColumns * CELL_W)
+    // Short of the columns' width: the estimate runs over the room the frame gets, and the excess is clipped off the right.
+    const width = Math.max(240, e.props.bodyColumns * CELL_W - 16)
     const t = Date.now()
     const foot = status(s, width, t)
-    const pieces = [...graph(s, width, Math.max(0, e.props.scroll.bodyRows * CELL_H - foot.height), t), foot]
+    const pieces = graph(s, width, Math.max(0, e.props.scroll.bodyRows * CELL_H - foot.height), t)
     // An interactive Svg is drawn in a frame that does not size itself from the markup: without both, it is 300 by 150.
+    // The desktop drops an Svg whose alt is blank, so each piece says what it is.
     return (
       <Box flexDirection="column">
         {pieces.map((p, i) => (
-          <Svg source={p.svg} alt={i === 0 ? describe(s) : ' '} width={width} height={p.height} isInteractive />
+          <Svg source={p.svg} alt={i === 0 ? describe(s) : `Git graph, part ${i + 1} of ${pieces.length}`} width={width} height={p.height} isInteractive />
         ))}
+        <Svg source={foot.svg} alt={describeStatus(s)} width={width} height={foot.height} isInteractive />
       </Box>
     )
   })
