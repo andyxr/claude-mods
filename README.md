@@ -10,6 +10,16 @@ A small marketplace of Claude Code mods by Andy Deighton.
 | `invaders` | `/invade` opens a game of Space Invaders in a side pane |
 | `snake` | `/snake` opens a game of Snake in a side pane |
 
+## Screenshots
+
+| `branch-live` in the terminal | `branch-live` in the desktop app |
+| --- | --- |
+| <img src="docs/images/branch-live-terminal.png" alt="branch-live drawing a git graph in a Claude Code terminal side pane" width="400"> | <img src="docs/images/branch-live-desktop.png" alt="branch-live showing a scrollable SVG git graph in the Claude desktop app" width="220"> |
+
+| `invaders` | `snake` |
+| --- | --- |
+| <img src="docs/images/invaders-terminal.png" alt="Space Invaders running in a Claude Code terminal side pane" width="400"> | <img src="docs/images/snake-terminal.png" alt="Snake running in a Claude Code terminal side pane" width="400"> |
+
 ## Install
 
 From a Claude Code prompt:
