@@ -6,6 +6,7 @@
       { "name": "context-handoff", "source": "./plugins/context-handoff" },
       { "name": "context-gauge", "source": "./plugins/context-gauge" },
       { "name": "snake", "source": "./plugins/snake" },
-      { "name": "invaders", "source": "./plugins/invaders" }
+      { "name": "invaders", "source": "./plugins/invaders" },
+      { "name": "lemmings", "source": "./plugins/lemmings" }
     ]
   }

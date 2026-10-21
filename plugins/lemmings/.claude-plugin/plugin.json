@@ -1,0 +1,1 @@
+{ "name": "lemmings", "version": "0.1.0", "author": { "name": "Andy Deighton" }, "description": "/lemmings opens a side pane where lemmings leap off a cliff and their bodies pile up as the context window fills", "types": "./types/index.d.ts" }

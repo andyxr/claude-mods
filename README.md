@@ -8,6 +8,7 @@ A small marketplace of Claude Code mods by Andy Deighton.
 | `context-gauge` | Status line gauge: context tokens left and tokens until autocompact, plus a session timer above the prompt |
 | `context-handoff` | Warns above the prompt when context gets long and offers a fresh session seeded with a hand-off (`/handyoff` shows it on demand) |
 | `invaders` | `/invade` opens a game of Space Invaders in a side pane |
+| `lemmings` | `/lemmings` opens a side pane where lemmings leap off a cliff and their bodies pile up as the context window fills |
 | `snake` | `/snake` opens a game of Snake in a side pane |
 
 ## Screenshots
