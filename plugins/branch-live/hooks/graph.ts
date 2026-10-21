@@ -1,6 +1,6 @@
 // Cell painting for the terminal's bottom-up graph. Newest commit sits at the bottom; history grows upwards.
 import type { Snapshot } from '../types'
-import { DEFAULT, DIM, FADE_MS, FAINT, HEAD_ROW, INK, age, badges, glowOf, headColor, headline, layout, mix, nodeKind, ticker, worktree } from './model'
+import { BAD, DEFAULT, DIM, FADE_MS, FAINT, HEAD_ROW, INK, age, badges, glowOf, headColor, headline, layout, mix, nodeKind, ticker, worktree } from './model'
 import type { NodeKind } from './model'
 
 export { DEFAULT }

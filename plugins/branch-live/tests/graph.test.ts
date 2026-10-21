@@ -108,6 +108,11 @@ test('the pane draws cells in the terminal and SVG elsewhere', async $ => {
   }
 })
 
+test('paints an error, such as outside a repository, in the terminal', () => {
+  const cv = paint({ ...repo, error: 'Not a git repository: no branches to show.', commits: [] }, 60, 20, 1000)
+  expect(String.fromCodePoint(...cv.cp)).toContain('Not a git repository')
+})
+
 test('says what the status bar says', () => {
   expect(describeStatus(repo)).toContain('main')
   expect(describeStatus(repo)).toContain('1 staged')
