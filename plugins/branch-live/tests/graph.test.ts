@@ -4,7 +4,7 @@ import type { GraphCommit, Snapshot } from '../types'
 import { diffRefs, mergedBranchName, parseStatus } from '../hooks/git'
 import { layout } from '../hooks/model'
 import { MAX_H, MAX_SVG, describeStatus, graph, status } from '../hooks/svg'
-import { paint } from '../hooks/graph'
+import { height, paint } from '../hooks/graph'
 
 const c = (hash: string, parents: string[], refs: string[] = [], subject = hash): GraphCommit => ({ hash, parents, author: 'a', time: 0, subject, refs })
 
@@ -44,6 +44,26 @@ test('paints HEAD on the bottom graph row and the branch in the footer', () => {
   expect(row(14)).toContain('◉')
   expect(row(14)).toContain('HEAD')
   expect(cv.encode().length).toBe(Math.ceil((60 * 20 * 12) / 3) * 4)
+})
+
+test('paints every commit when the history is taller than the pane', () => {
+  const long = Array.from({ length: 200 }, (_, i) => c(`c${i}`, i < 199 ? [`c${i + 1}`] : [], [], `commit ${i}`))
+  const snap: Snapshot = {
+    error: null,
+    root: '/r',
+    head: { branch: 'main', oid: 'c0', upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0 },
+    commits: long,
+    fresh: {},
+    events: [],
+  }
+  const h = height(snap, 20)
+  expect(h).toBe(403)
+  const cv = paint(snap, 60, h, 1000)
+  const text = String.fromCodePoint(...cv.cp)
+  expect(text).toContain('commit 199')
+  expect(text).not.toContain('older')
+  expect(cv.encode(256, h).length).toBe(Math.ceil((60 * (h - 256) * 12) / 3) * 4)
+  expect(height({ ...snap, commits: long.slice(0, 3) }, 20)).toBe(20)
 })
 
 test('reads porcelain v2 status', () => {
@@ -98,7 +118,7 @@ test('draws all of a long history in pieces, each under the element limit', () =
 test('the pane draws cells in the terminal and SVG elsewhere', async $ => {
   const props = { title: 'Branch', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} } as const
   const term = await $.ui.mount({ plugin: 'branch-live', surface: 'terminal', component: 'Pane', requestId: 'branch-live', props })
-  expect((await term.drawn()).type).toBe('Raster')
+  expect((await term.findAll({ type: 'Raster' })).length).toBeGreaterThan(0)
   for (const surface of ['desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ plugin: 'branch-live', surface, component: 'Pane', requestId: 'branch-live', props })
     const svgs = await ui.findAll({ type: 'Svg' })

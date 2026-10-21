@@ -1,1 +1,1 @@
-{ "name": "branch-live", "version": "0.2.5", "author": { "name": "Andy Deighton" }, "description": "Live, bottom-up git graph of the current branch and commit in a side pane", "types": "./types/index.d.ts" }
+{ "name": "branch-live", "version": "0.2.6", "author": { "name": "Andy Deighton" }, "description": "Live, bottom-up git graph of the current branch and commit in a side pane", "types": "./types/index.d.ts" }

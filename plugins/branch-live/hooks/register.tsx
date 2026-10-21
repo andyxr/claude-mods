@@ -4,13 +4,15 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { RepoEvent, Snapshot } from '../types'
 import { diffRefs, git, parseStatus, readCommits, readRefs } from './git'
 import type { Run } from './git'
-import { paint } from './graph'
+import { height, paint } from './graph'
 import { CELL_H, CELL_W, describe, describeStatus, graph, status } from './svg'
 
 const PANE = 'branch-live'
 const TITLE = 'Branch'
 const POLL_MS = 1500
 const LIMIT = 300
+/** A Raster holds at most this many rows. */
+const RASTER_ROWS = 256
 
 const EMPTY: Snapshot = {
   error: null,
@@ -117,10 +119,17 @@ export const register: Register = on => {
     if (e.surface === 'terminal') {
       // Only the cells need the tick: the SVG runs its own glow and fade.
       await read($, now)
-      const { Raster } = $.ui.resolve(e)
+      const { Box, Raster } = $.ui.resolve(e)
       const w = Math.max(10, Math.min(512, e.props.bodyColumns))
-      const rows = Math.max(6, Math.min(256, e.props.scroll.bodyRows))
-      return <Raster key="graph" columns={w} rows={rows} cells={paint(s, w, rows, Date.now()).encode()} />
+      // The whole history is painted and the pane scrolls over it, stacked in Rasters as one holds at most RASTER_ROWS.
+      const rows = height(s, Math.max(6, e.props.scroll.bodyRows))
+      const cv = paint(s, w, rows, Date.now())
+      const pieces = []
+      for (let y = 0; y < rows; y += RASTER_ROWS) {
+        const end = Math.min(rows, y + RASTER_ROWS)
+        pieces.push(<Raster key={`graph-${y}`} columns={w} rows={end - y} cells={cv.encode(y, end)} />)
+      }
+      return <Box flexDirection="column">{pieces}</Box>
     }
     const { Box, Svg } = $.ui.resolve(e)
     // Short of the columns' width: the estimate runs over the room the frame gets, and the excess is clipped off the right.

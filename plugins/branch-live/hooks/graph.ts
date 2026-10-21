@@ -55,14 +55,15 @@ export class Canvas {
     }
     return x
   }
-  /** Standard padded base64 of the little-endian [cp, fg, bg] triplets. */
-  encode(): string {
-    const n = this.w * this.h
+  /** Standard padded base64 of the little-endian [cp, fg, bg] triplets of rows `y0` to `y1`. */
+  encode(y0 = 0, y1 = this.h): string {
+    const from = y0 * this.w
+    const n = (y1 - y0) * this.w
     const words = new Uint32Array(n * 3)
     for (let i = 0; i < n; i++) {
-      words[i * 3] = this.cp[i]
-      words[i * 3 + 1] = this.fg[i]
-      words[i * 3 + 2] = this.bg[i]
+      words[i * 3] = this.cp[from + i]
+      words[i * 3 + 1] = this.fg[from + i]
+      words[i * 3 + 2] = this.bg[from + i]
     }
     return base64(new Uint8Array(words.buffer))
   }
@@ -99,6 +100,14 @@ export function base64(bytes: Uint8Array): string {
 }
 
 const GLYPH: Record<NodeKind, string> = { head: '◉', merge: '◆', fresh: '✦', commit: '●' }
+const FOOTER = 3
+
+/** Rows that show every loaded commit over the ticker and footer, at least `min`: the pane scrolls over the rest. */
+export function height(snap: Snapshot, min: number): number {
+  if (snap.error || !snap.commits.length) return min
+  const evs = Math.min(3, snap.events.length)
+  return Math.max(min, snap.commits.length * 2 + FOOTER + evs + (evs ? 1 : 0))
+}
 
 /** Paints the whole pane: graph growing up from the bottom, event ticker, then the HEAD status bar. */
 export function paint(snap: Snapshot, w: number, h: number, now: number): Canvas {
@@ -107,7 +116,7 @@ export function paint(snap: Snapshot, w: number, h: number, now: number): Canvas
   const hc = headColor(head)
 
   // Footer: the current branch and commit, at the very bottom.
-  const footer = 3
+  const footer = FOOTER
   const fy = h - footer
   for (let x = 0; x < w; x++) cv.set(x, fy, '▁', hc)
   let x = 0
