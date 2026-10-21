@@ -21,6 +21,10 @@ A small marketplace of Claude Code mods by Andy Deighton.
 | --- | --- |
 | <img src="docs/images/invaders-terminal.png" alt="Space Invaders running in a Claude Code terminal side pane" width="400"> | <img src="docs/images/snake-terminal.png" alt="Snake running in a Claude Code terminal side pane" width="400"> |
 
+| `lemmings` |
+| --- |
+| <img src="docs/images/lemmings-terminal.png" alt="Lemmings walking off a cliff and piling up as the context fills, in a Claude Code terminal side pane" width="300"> |
+
 ## Install
 
 From a Claude Code prompt:
