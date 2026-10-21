@@ -4,7 +4,7 @@ export type Lem = {
   y: number
   vy: number
   dx: number
-  state: 'walk' | 'fall' | 'splat'
+  state: 'wait' | 'walk' | 'fall' | 'splat'
   t: number
 }
 
@@ -41,13 +41,31 @@ const rand = (seed: number) => {
 
 export const newWorld = (seed: number): World => ({ lems: [], tick: 0, lost: 0, seed: seed >>> 0 })
 
+const WALK = 0.34
+// Columns between lemmings queueing on the cliff; the sprite is four wide.
+const GAP = 5
+
+/** Where the i-th lemming in the queue stands, the first just short of the edge. */
+export const slot = (g: Geom, i: number) => g.cliffX + 1 + i * GAP
+
+const waiting = (w: World) => w.lems.filter(l => l.state === 'wait').sort((a, b) => a.x - b.x)
+
+/** Adds a lemming to the back of the queue, if there's room for it to walk on. */
 export const spawn = (w: World, g: Geom): World => {
+  const line = waiting(w)
+  const last = line[line.length - 1]
+  if (slot(g, line.length) > g.width - 1 || (last && last.x > g.width - 1 - GAP)) return w
   const r = rand(w.seed)
-  const lem: Lem = { x: g.width - 1, y: g.top - 1, vy: 0, dx: 0.08 + r.value * 0.35, state: 'walk', t: 0 }
+  const lem: Lem = { x: g.width - 1, y: g.top - 1, vy: 0, dx: 0.08 + r.value * 0.35, state: 'wait', t: 0 }
   return { ...w, seed: r.seed, lems: [...w.lems, lem] }
 }
 
-const WALK = 0.34
+/** Sends the lemming at the front of the queue over the edge. */
+export const release = (w: World): World => {
+  const front = waiting(w)[0]
+  return front ? { ...w, lems: w.lems.map(l => (l === front ? { ...l, state: 'walk' } : l)) } : w
+}
+
 const GRAVITY = 0.12
 const TERMINAL = 1.1
 const SPLAT_TICKS = 8
@@ -55,10 +73,15 @@ const SPLAT_TICKS = 8
 export const step = (w: World, g: Geom): World => {
   let lost = w.lost
   const floor = landing(g)
+  const line = waiting(w)
   const lems: Lem[] = []
   for (const l of w.lems) {
     const t = l.t + 1
-    if (l.state === 'walk') {
+    if (l.state === 'wait') {
+      // Shuffle up to its place in the queue, then stand still.
+      const x = Math.max(slot(g, line.indexOf(l)), l.x - WALK)
+      lems.push(x === l.x ? l : { ...l, x, t })
+    } else if (l.state === 'walk') {
       const x = l.x - WALK
       lems.push(x < g.cliffX ? { ...l, x, t, state: 'fall', vy: 0 } : { ...l, x, t })
     } else if (l.state === 'fall') {

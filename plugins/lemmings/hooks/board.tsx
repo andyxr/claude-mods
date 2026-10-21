@@ -1,6 +1,6 @@
 import type { ClientModule } from 'claude-code'
 
-import { geom, newWorld, spawn, step } from './sim'
+import { geom, newWorld, release, spawn, step } from './sim'
 import type { Geom, World } from './sim'
 
 export type BoardProps = { used: number | null; window: number; compactAt: number | null }
@@ -8,10 +8,9 @@ export type BoardProps = { used: number | null; window: number; compactAt: numbe
 type Local = { world: World; used: number | null; window: number; queue: number }
 
 const TICK_MS = 80
-// One lemming every ~2.4s, plus a rush whenever the context grows.
-const SPAWN_EVERY = 30
+// Lemmings queue on the cliff and only jump while the context grows.
+const SPAWN_EVERY = 3
 const RUSH_EVERY = 4
-const MAX_LEMS = 40
 // Title and stats above the board, the hint below it.
 const CHROME_ROWS = 3
 
@@ -102,7 +101,7 @@ function paintLems(rows: Paint[][], world: World) {
     const x = Math.round(l.x)
     const y = Math.round(l.y)
     // x is the column the lemming stands on.
-    if (l.state === 'walk') paintSprite(rows, Math.floor(l.x) % 2 ? WALK_A : WALK_B, x - 2, y)
+    if (l.state === 'walk' || l.state === 'wait') paintSprite(rows, Math.floor(l.x) % 2 ? WALK_A : WALK_B, x - 2, y)
     else if (l.state === 'fall') paintSprite(rows, FLAIL, x - 3, y)
     else {
       const cell = rows[y]?.[x]
@@ -134,17 +133,19 @@ const Board: ClientModule<BoardProps, Local> = (props, surface) => {
       const g = geom(surface.columns, Math.max(4, surface.rows - CHROME_ROWS), now.used === null || now.window <= 0 ? 0 : now.used / now.window)
       let world = step(now.world, g)
       let queue = now.queue
-      const crowded = world.lems.length >= MAX_LEMS
-      if (!crowded && queue > 0 && world.tick % RUSH_EVERY === 0) {
-        world = spawn(world, g)
-        queue--
-      } else if (!crowded && world.tick % SPAWN_EVERY === 0) world = spawn(world, g)
+      if (queue > 0 && world.tick % RUSH_EVERY === 0) {
+        const sent = release(world)
+        if (sent !== world) queue--
+        world = sent
+      }
+      if (world.tick % SPAWN_EVERY === 0) world = spawn(world, g)
       surface.setState({ ...now, world, queue })
     })
   } else if (local.used !== props.used || local.window !== props.window) {
-    // The context grew: send one lemming per percent gained, a dozen at most.
+    // The context grew: send one lemming per percent gained, at least one, a dozen at most.
     const gained = local.used === null || props.used === null ? 0 : ((props.used - local.used) / props.window) * 100
-    surface.setState({ ...local, used: props.used, window: props.window, queue: Math.min(12, local.queue + Math.max(0, Math.round(gained))) })
+    const sent = gained > 0 ? Math.max(1, Math.round(gained)) : 0
+    surface.setState({ ...local, used: props.used, window: props.window, queue: Math.min(12, local.queue + sent) })
   }
 
   if (!local || surface.columns <= 0) return <Text color={HAIR}>Lemmings incoming…</Text>
