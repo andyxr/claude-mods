@@ -80,6 +80,74 @@ test('hand-off writes the file, clears, and sends the prompt', async ($, on) => 
   expect(await ui.find({ key: 'handoff' })).toBeUndefined()
 })
 
+test('hand-off retries when the first reply is only a tool call', async ($, on) => {
+  let forks = 0
+  let written = ''
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => { const { Box } = $.ui.resolve(e); return <Box /> })
+  on('model.fork', () => {
+    forks += 1
+    const value = forks === 1
+      ? { isAnswered: false, reason: 'empty-reply', usage: {} }
+      : { isAnswered: true, text: '## Goal\nship it', usage: {} }
+    return { value } as any
+  })
+  on('env.get', () => ({ value: '/Users/a' }))
+  on('session.root', () => ({ value: '/dev/sdss-quasar' }))
+  on('clock.now', () => ({ value: Date.UTC(2026, 9, 7, 9, 5, 3) }))
+  on('fs.write', ($, e: any) => { written = e.text; return { value: undefined } as any })
+  on('command.run', () => ({}) as any)
+  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('ui.toast', () => ({ value: undefined }) as any)
+
+  await measure($, 150_000)
+  const ui = await $.ui.mount({ plugin: 'context-handoff', surface: 'terminal', component: 'AbovePrompt', props: {} } as any)
+  await ui.press({ key: 'handoff' })
+  expect(forks).toBe(2)
+  expect(written).toBe('## Goal\nship it')
+  expect(await ui.find({ key: 'handoff' })).toBeUndefined()
+})
+
+test('hand-off retries when the first reply is a preamble and not the document', async ($, on) => {
+  let forks = 0
+  let written = ''
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => { const { Box } = $.ui.resolve(e); return <Box /> })
+  on('model.fork', () => {
+    forks += 1
+    const value = forks === 1
+      ? { isAnswered: true, text: 'I will write that file.', usage: {} }
+      : { isAnswered: true, text: '## Goal\nship it', usage: {} }
+    return { value } as any
+  })
+  on('env.get', () => ({ value: '/Users/a' }))
+  on('session.root', () => ({ value: '/dev/sdss-quasar' }))
+  on('clock.now', () => ({ value: Date.UTC(2026, 9, 7, 9, 5, 3) }))
+  on('fs.write', ($, e: any) => { written = e.text; return { value: undefined } as any })
+  on('command.run', () => ({}) as any)
+  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('ui.toast', () => ({ value: undefined }) as any)
+
+  await measure($, 150_000)
+  const ui = await $.ui.mount({ plugin: 'context-handoff', surface: 'terminal', component: 'AbovePrompt', props: {} } as any)
+  await ui.press({ key: 'handoff' })
+  expect(forks).toBe(2)
+  expect(written).toBe('## Goal\nship it')
+})
+
+test('hand-off does not retry when there is nothing to fork', async ($, on) => {
+  let forks = 0
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => { const { Box } = $.ui.resolve(e); return <Box /> })
+  on('model.fork', () => { forks += 1; return { value: { isAnswered: false, reason: 'nothing-to-fork', usage: {} } } as any })
+
+  await measure($, 150_000)
+  const ui = await $.ui.mount({ plugin: 'context-handoff', surface: 'terminal', component: 'AbovePrompt', props: {} } as any)
+  await ui.press({ key: 'handoff' })
+  expect(forks).toBe(1)
+  expect(await ui.find({ type: 'Text', text: /Nothing to hand off yet/ })).toBeDefined()
+})
+
 test('hand-off falls back to USERPROFILE when HOME is unset', async ($, on) => {
   let written = ''
   on('session.measure', ($, e) => ({ changed: e.changed }))

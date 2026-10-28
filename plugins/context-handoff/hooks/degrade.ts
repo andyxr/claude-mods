@@ -11,16 +11,28 @@ const k = (n: number) => `${Math.round(n / 1000)}k`
 export const message = ({ tokens, window }: Warning) =>
   `Context at ${k(tokens)} tokens (${Math.round((tokens / window) * 100)}%). Answers may start to degrade. Start a fresh session with a hand-off?`
 
-export const HANDOFF_PROMPT = `Write a hand-off document so a fresh Claude Code session in this same project can continue this work with no access to this conversation. Use markdown with these sections:
-
-## Goal
+const SECTIONS = `## Goal
 ## Current state
 ## Key decisions and why
 ## Files touched or relevant (paths)
 ## Next steps
-## Open questions / gotchas
+## Open questions / gotchas`
 
-Be specific and complete but concise. Output only the document, no preamble.`
+// A fork still lists the session's tools and then denies every call. "Write a document"
+// makes the model call Write and emit no text, which comes back as empty-reply.
+const NO_TOOLS = `Do not call any tool. The Write tool is disabled: a tool call is discarded and the document is lost. Your reply text is the whole document, with no preamble.`
+
+export const HANDOFF_PROMPT = `Reply with a hand-off document a fresh Claude Code session in this same project can continue from, with no access to this conversation. Markdown, these sections:
+
+${SECTIONS}
+
+Be specific and complete but concise. ${NO_TOOLS}`
+
+export const HANDOFF_RETRY = `The hand-off was discarded because it was a tool call. Tools are disabled. Reply with only the markdown document in your message text, these sections:
+
+${SECTIONS}
+
+${NO_TOOLS}`
 
 export const handoffPath = (home: string, root: string, now: number) => {
   const project = root.split('/').filter(Boolean).at(-1) ?? 'project'

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { Phase } from '../types'
-import { HANDOFF_PROMPT, handoffPath, isDegrading, message, resumePrompt } from './degrade'
+import { HANDOFF_PROMPT, HANDOFF_RETRY, handoffPath, isDegrading, message, resumePrompt } from './degrade'
 
 const warning = atom({ plugin: 'context-handoff', key: 'warning' } as const, null)
 const phase = atom({ plugin: 'context-handoff', key: 'phase' } as const, 'warn')
@@ -21,23 +21,38 @@ async function measure($: EngineInterface, tokens: number | undefined, window: n
   await update($, warning, () => ({ tokens: tokens!, window }))
 }
 
+const isDocument = (text: string) => text.includes('## ')
+
+async function draft($: EngineInterface) {
+  const first = await $.model.fork({ prompt: HANDOFF_PROMPT })
+  if (first.isAnswered && isDocument(first.text)) return first.text
+  // A fork needs the main thread's last request. A new session has none until a reply finishes.
+  if (!first.isAnswered && first.reason === 'nothing-to-fork') {
+    throw new Error('Nothing to hand off yet. Wait until a reply in this session has finished.')
+  }
+  // empty-reply is a tool call with no text. An API error will not improve on a retry.
+  if (!first.isAnswered && first.reason !== 'empty-reply') throw new Error(`hand-off not written: ${first.reason}`)
+  const second = await $.model.fork({ prompt: HANDOFF_RETRY })
+  if (!second.isAnswered) throw new Error(`hand-off not written: ${second.reason}`)
+  return second.text
+}
+
 async function handOff($: EngineInterface) {
   await update($, phase, (): Phase => 'writing')
   try {
-    const reply = await $.model.fork({ prompt: HANDOFF_PROMPT })
-    if (!reply.isAnswered) throw new Error(`hand-off not written: ${reply.reason}`)
+    const text = await draft($)
     // Native Windows usually has no HOME, only USERPROFILE.
     const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
     if (home === undefined) throw new Error('HOME and USERPROFILE are unset')
     const path = handoffPath(home, await $.session.root(), await $.clock.now())
-    await $.fs.write(path, reply.text)
+    await $.fs.write(path, text)
     await $.command.run({ command: 'clear', args: '' })
     isIgnored = false
     isRequested = false
     await update($, warning, () => null)
     await update($, phase, (): Phase => 'warn')
     $.ui.toast(`Hand-off saved to ${path}`)
-    $.prompt.submit({ text: resumePrompt(path, reply.text), asUser: true }).catch(err => $.ui.toast(`Hand-off not sent: ${err}`))
+    $.prompt.submit({ text: resumePrompt(path, text), asUser: true }).catch(err => $.ui.toast(`Hand-off not sent: ${err}`))
   } catch (err) {
     await update($, phase, () => ({ error: err instanceof Error ? err.message : String(err) }))
   }
