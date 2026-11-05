@@ -35,6 +35,12 @@ async function poll($: EngineInterface) {
   if (busy) return
   busy = true
   try {
+    // A /clear starts a new session whose state is EMPTY again, while these module variables live on: start over with it.
+    const held = await read($, snap)
+    if (held.root === null && held.error === null) {
+      refs = null
+      fingerprint = ''
+    }
     const run: Run = argv => $.process.run(argv, { timeoutMs: 15000 })
     const st = await run(['git', 'status', '--porcelain=v2', '--branch'])
     if (st.exitCode !== 0) {
