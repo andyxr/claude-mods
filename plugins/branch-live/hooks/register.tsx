@@ -5,10 +5,13 @@ import type { RepoEvent, Snapshot } from '../types'
 import { diffRefs, git, parseStatus, readCommits, readRefs } from './git'
 import type { Run } from './git'
 import { height, paint } from './graph'
+import { GOOD, fileGroups, hex } from './model'
 import { CELL_H, CELL_W, describe, describeStatus, graph, status } from './svg'
 
 const PANE = 'branch-live'
 const TITLE = 'Branch'
+/** The second tab: the uncommitted files. */
+const CHANGES = 'branch-live-changes'
 const POLL_MS = 1500
 const LIMIT = 300
 /** A Raster holds at most this many rows. */
@@ -17,7 +20,7 @@ const RASTER_ROWS = 256
 const EMPTY: Snapshot = {
   error: null,
   root: null,
-  head: { branch: null, oid: null, upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0 },
+  head: { branch: null, oid: null, upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, files: [], changed: 0 },
   commits: [],
   fresh: {},
   events: [],
@@ -30,6 +33,11 @@ let refs: Map<string, string> | null = null
 let fingerprint = ''
 let busy = false
 let glowUntil = 0
+/** The Uncommitted tab's label as last opened. */
+let changesShown = ''
+
+/** The tab's label is plain text, so a dot is what flags uncommitted work. */
+const changesTitle = (n: number) => (n ? '● Uncommitted' : 'Uncommitted')
 
 async function poll($: EngineInterface) {
   if (busy) return
@@ -42,7 +50,7 @@ async function poll($: EngineInterface) {
       fingerprint = ''
     }
     const run: Run = argv => $.process.run(argv, { timeoutMs: 15000 })
-    const st = await run(['git', 'status', '--porcelain=v2', '--branch'])
+    const st = await run(['git', '-c', 'core.quotepath=false', 'status', '--porcelain=v2', '--branch'])
     if (st.exitCode !== 0) {
       if (fingerprint !== 'none') {
         fingerprint = 'none'
@@ -88,17 +96,38 @@ async function poll($: EngineInterface) {
   } catch (err) {
     await update($, snap, s => ({ ...s, error: String((err as Error)?.message ?? err) }))
   } finally {
+    await retitle($).catch(() => undefined)
     busy = false
   }
+}
+
+/** Renames the Uncommitted tab when the tree goes dirty or clean. A reopen raises the tab, so Branch, if it was up, opens again after. */
+async function retitle($: EngineInterface) {
+  const title = changesTitle((await read($, snap)).head.changed)
+  if (title === changesShown) return
+  const panes = await $.ui.panes()
+  if (!panes.some(p => p.id === CHANGES)) return
+  changesShown = title
+  const branchUp = panes.some(p => p.id === PANE && p.isShown)
+  await $.ui.open({ id: CHANGES, title })
+  if (branchUp) await $.ui.open({ id: PANE, title: TITLE })
 }
 
 /** Scrolls the pane to HEAD and the status bar: history runs upwards from there. */
 const toEnd = ($: EngineInterface) => $.ui.scroll({ in: PANE, to: 'end' }).catch(() => undefined)
 
+/** Both tabs, Branch first and shown: Branch opens again last to bring it to the front. */
+async function openPanes($: EngineInterface) {
+  changesShown = changesTitle((await read($, snap)).head.changed)
+  await $.ui.open({ id: PANE, title: TITLE })
+  await $.ui.open({ id: CHANGES, title: changesShown })
+  await $.ui.open({ id: PANE, title: TITLE })
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'branch-live', description: 'Show a live graph of the current branch and commit' })
-    void $.ui.open({ id: PANE, title: TITLE })
+    void openPanes($)
     void poll($)
     $.clock.every(POLL_MS, () => poll($))
     // Drive the arrival glow and ticker fade while something is fading.
@@ -107,10 +136,18 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'branch-live' }, async $ => {
-    await $.ui.open({ id: PANE, title: TITLE })
+    await openPanes($)
     void poll($)
     await toEnd($)
-    return { text: 'Branch pane opened.' }
+    return { text: 'Branch panes opened.' }
+  })
+
+  // The two tabs are one pane to the person: closing either closes both. Only their close, so ours does not echo.
+  on('ui.close', async ($, e, next) => {
+    const closed = await next(e)
+    const other = e.id === PANE ? CHANGES : e.id === CHANGES ? PANE : null
+    if (other && e.origin.kind === 'person') void $.ui.close({ id: other })
+    return closed
   })
 
   // A git command the agent ran shows up at once, not on the next tick.
@@ -151,6 +188,31 @@ export const register: Register = on => {
           <Svg source={p.svg} alt={i === 0 ? describe(s) : `Git graph, part ${i + 1} of ${pieces.length}`} width={width} height={p.height} isInteractive />
         ))}
         <Svg source={foot.svg} alt={describeStatus(s)} width={width} height={foot.height} isInteractive />
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: CHANGES }, async ($, e) => {
+    const s = await read($, snap)
+    const { Box, Text } = $.ui.resolve(e)
+    const groups = fileGroups(s.head)
+    if (!groups.length) return <Text color={hex(GOOD)}>✓ working tree clean</Text>
+    const more = s.head.changed - s.head.files.length
+    return (
+      <Box flexDirection="column">
+        {groups.map(g => (
+          <Box key={g.title} flexDirection="column" marginBottom={1}>
+            <Text color={hex(g.color)} weight="bold">{`${g.title} (${g.rows.length})`}</Text>
+            {g.rows.map(r => (
+              <Text key={r.mark + r.path}>
+                <Text color={hex(g.color)}>{` ${r.mark} `}</Text>
+                {r.path}
+                <Text dimColor>{r.note ? `  ${r.note}` : ''}</Text>
+              </Text>
+            ))}
+          </Box>
+        ))}
+        {more > 0 && <Text dimColor>{`…and ${more} more`}</Text>}
       </Box>
     )
   })

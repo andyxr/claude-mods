@@ -18,7 +18,14 @@ export type WorkTree = {
   unstaged: number
   untracked: number
   conflicted: number
+  /** The uncommitted files, as `git status` lists them, at most MAX_FILES. */
+  files: WorkFile[]
+  /** How many files `git status` listed, past MAX_FILES too. */
+  changed: number
 }
+
+/** One uncommitted file: `xy` is porcelain v2's index and worktree letters (`.` unchanged), `??` untracked. */
+export type WorkFile = { path: string; xy: string; from?: string }
 
 export type RepoEvent = { text: string; kind: 'commit' | 'merge' | 'branch' | 'delete' | 'switch' | 'move' | 'tag'; at: number }
 

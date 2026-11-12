@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { GraphCommit, Snapshot } from '../types'
 import { diffRefs, mergedBranchName, parseStatus } from '../hooks/git'
-import { layout } from '../hooks/model'
+import { fileGroups, layout } from '../hooks/model'
 import { MAX_H, MAX_SVG, describeStatus, graph, status } from '../hooks/svg'
 import { height, paint } from '../hooks/graph'
 
@@ -31,7 +31,7 @@ test('paints HEAD on the bottom graph row and the branch in the footer', () => {
   const snap: Snapshot = {
     error: null,
     root: '/r',
-    head: { branch: 'main', oid: 'm', upstream: null, ahead: 0, behind: 0, staged: 1, unstaged: 0, untracked: 0, conflicted: 0 },
+    head: { branch: 'main', oid: 'm', upstream: null, ahead: 0, behind: 0, staged: 1, unstaged: 0, untracked: 0, conflicted: 0, files: [], changed: 0 },
     commits,
     fresh: {},
     events: [{ kind: 'commit', text: 'main: hello', at: 0 }],
@@ -51,7 +51,7 @@ test('paints every commit when the history is taller than the pane', () => {
   const snap: Snapshot = {
     error: null,
     root: '/r',
-    head: { branch: 'main', oid: 'c0', upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0 },
+    head: { branch: 'main', oid: 'c0', upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, files: [], changed: 0 },
     commits: long,
     fresh: {},
     events: [],
@@ -67,8 +67,20 @@ test('paints every commit when the history is taller than the pane', () => {
 })
 
 test('reads porcelain v2 status', () => {
-  const w = parseStatus('# branch.oid abc\n# branch.head dev\n# branch.upstream origin/dev\n# branch.ab +2 -1\n1 M. N... x\n1 .M N... y\n? z\n')
-  expect(w).toEqual({ branch: 'dev', oid: 'abc', upstream: 'origin/dev', ahead: 2, behind: 1, staged: 1, unstaged: 1, untracked: 1, conflicted: 0 })
+  const w = parseStatus('# branch.oid abc\n# branch.head dev\n# branch.upstream origin/dev\n# branch.ab +2 -1\n1 M. N... 100644 100644 100644 a b x\n1 .M N... 100644 100644 100644 a b y\n? z\n')
+  expect(w).toEqual({ branch: 'dev', oid: 'abc', upstream: 'origin/dev', ahead: 2, behind: 1, staged: 1, unstaged: 1, untracked: 1, conflicted: 0,
+    files: [{ path: 'x', xy: 'M.' }, { path: 'y', xy: '.M' }, { path: 'z', xy: '??' }], changed: 3 })
+})
+
+test('lists uncommitted files by group', () => {
+  const w = parseStatus('2 R. N... 100644 100644 100644 a b R100 new name.ts\told.ts\n1 MM N... 100644 100644 100644 a b both.ts\nu UU N... 1 2 3 4 a b c clash.ts\n? new dir/\n')
+  expect(w.files[0]).toEqual({ path: 'new name.ts', xy: 'R.', from: 'old.ts' })
+  expect(fileGroups(w).map(g => [g.title, g.rows.map(r => r.mark + ' ' + r.path)])).toEqual([
+    ['Conflicted', ['✕ clash.ts']],
+    ['Staged', ['R old.ts → new name.ts', 'M both.ts']],
+    ['Not staged', ['M both.ts']],
+    ['Untracked', ['? new dir/']],
+  ])
 })
 
 test('names ref changes', () => {
@@ -81,7 +93,7 @@ test('names ref changes', () => {
 const repo: Snapshot = {
   error: null,
   root: '/r',
-  head: { branch: 'main', oid: 'm', upstream: 'origin/main', ahead: 2, behind: 0, staged: 1, unstaged: 0, untracked: 0, conflicted: 0 },
+  head: { branch: 'main', oid: 'm', upstream: 'origin/main', ahead: 2, behind: 0, staged: 1, unstaged: 0, untracked: 0, conflicted: 0, files: [], changed: 0 },
   commits: [{ ...commits[0]!, refs: ['heads/main', 'remotes/origin/main', 'tags/v1'] }, ...commits.slice(1, 4), { ...commits[4]!, subject: 'fix <a & b>' }],
   fresh: { f2: 900 },
   events: [{ kind: 'commit', text: 'main: hello', at: 0 }],

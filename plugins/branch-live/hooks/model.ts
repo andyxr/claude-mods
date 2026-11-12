@@ -1,6 +1,6 @@
 // What both painters draw from: lane layout, branch colors, and the footer, ticker and badge content.
 // The terminal paints it into cells (graph.ts), the other surfaces into SVG (svg.ts).
-import type { GraphCommit, RepoEvent, WorkTree } from '../types'
+import type { GraphCommit, RepoEvent, WorkFile, WorkTree } from '../types'
 import { mergedBranchName } from './git'
 
 export const DEFAULT = 0x01000000
@@ -156,6 +156,33 @@ export function worktree(head: WorkTree): Seg[] {
   if (head.untracked) segs.push({ text: `? ${head.untracked} untracked`, color: DIM })
   return segs
 }
+
+const CHANGE: Record<string, string> = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed', C: 'copied', T: 'type changed' }
+
+export type FileRow = { mark: string; path: string; note: string }
+export type FileGroup = { title: string; color: number; rows: FileRow[] }
+
+/** The uncommitted files by what `git commit` would do with them: a file staged and then edited again sits in both groups. */
+export function fileGroups(head: WorkTree): FileGroup[] {
+  const conflicted: FileGroup = { title: 'Conflicted', color: BAD, rows: [] }
+  const staged: FileGroup = { title: 'Staged', color: GOOD, rows: [] }
+  const unstaged: FileGroup = { title: 'Not staged', color: WARN, rows: [] }
+  const untracked: FileGroup = { title: 'Untracked', color: DIM, rows: [] }
+  const row = (f: WorkFile, c: string): FileRow => ({ mark: c, path: f.from ? `${f.from} → ${f.path}` : f.path, note: CHANGE[c] ?? '' })
+  for (const f of head.files) {
+    const [x = '.', y = '.'] = f.xy
+    if (f.xy === '??') untracked.rows.push(row(f, '?'))
+    else if (f.xy.includes('U') || f.xy === 'AA' || f.xy === 'DD') conflicted.rows.push({ mark: '✕', path: f.path, note: 'conflict' })
+    else {
+      if (x !== '.') staged.rows.push(row(f, x))
+      if (y !== '.') unstaged.rows.push(row(f, y))
+    }
+  }
+  return [conflicted, staged, unstaged, untracked].filter(g => g.rows.length)
+}
+
+/** A model color as the `#rrggbb` a Text takes. */
+export const hex = (c: number) => '#' + c.toString(16).padStart(6, '0')
 
 export const headColor = (head: WorkTree) => (head.branch ? branchColor(head.branch) : WARN)
 

@@ -40,8 +40,21 @@ export async function readCommits(run: Run, limit: number, refs: Map<string, str
   return commits
 }
 
+/** The most files a snapshot keeps: a huge untracked tree must not flood the state. */
+export const MAX_FILES = 500
+
+/** A status line's path: what follows its `skip` space-separated fields, `new<TAB>orig` on a rename. */
+function addFile(w: WorkTree, line: string, skip: number, xy: string) {
+  w.changed++
+  if (w.files.length >= MAX_FILES) return
+  let at = 0
+  for (let i = 0; i < skip && at >= 0; i++) at = line.indexOf(' ', at) + 1
+  const [path = '', from] = line.slice(at).split('\t')
+  w.files.push(from === undefined ? { path, xy } : { path, xy, from })
+}
+
 export function parseStatus(out: string): WorkTree {
-  const w: WorkTree = { branch: null, oid: null, upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0 }
+  const w: WorkTree = { branch: null, oid: null, upstream: null, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, files: [], changed: 0 }
   for (const line of out.split('\n')) {
     if (line.startsWith('# branch.oid ')) {
       const v = line.slice(13).trim()
@@ -57,10 +70,13 @@ export function parseStatus(out: string): WorkTree {
     } else if (line.startsWith('1 ') || line.startsWith('2 ')) {
       if (line[2] !== '.') w.staged++
       if (line[3] !== '.') w.unstaged++
+      addFile(w, line, line[0] === '1' ? 8 : 9, line.slice(2, 4))
     } else if (line.startsWith('u ')) {
       w.conflicted++
+      addFile(w, line, 10, line.slice(2, 4))
     } else if (line.startsWith('? ')) {
       w.untracked++
+      addFile(w, line, 1, '??')
     }
   }
   return w
