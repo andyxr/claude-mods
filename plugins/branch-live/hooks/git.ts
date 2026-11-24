@@ -25,9 +25,10 @@ export async function readRefs(run: Run): Promise<Map<string, string>> {
   return refs
 }
 
-export async function readCommits(run: Run, limit: number, refs: Map<string, string>): Promise<GraphCommit[]> {
+/** Every commit reachable from HEAD, branches, remotes and tags, back to the root commit(s). */
+export async function readCommits(run: Run, refs: Map<string, string>): Promise<GraphCommit[]> {
   const format = ['%H', '%P', '%an', '%ct', '%s'].join('%x00') + '%x1e'
-  const out = await git(run, ['log', 'HEAD', '--branches', '--remotes', '--tags', '--topo-order', `-n${limit}`, `--format=${format}`])
+  const out = await git(run, ['log', 'HEAD', '--branches', '--remotes', '--tags', '--topo-order', `--format=${format}`])
   const byHash = new Map<string, string[]>()
   for (const [ref, hash] of refs) byHash.set(hash, [...(byHash.get(hash) ?? []), ref])
   const commits: GraphCommit[] = []

@@ -13,7 +13,6 @@ const TITLE = 'Branch'
 /** The second tab: the uncommitted files. */
 const CHANGES = 'branch-live-changes'
 const POLL_MS = 1500
-const LIMIT = 300
 /** A Raster holds at most this many rows. */
 const RASTER_ROWS = 256
 
@@ -67,7 +66,7 @@ async function poll($: EngineInterface) {
       return
     }
     fingerprint = fp
-    const commits = head.oid ? await readCommits(run, LIMIT, nextRefs) : []
+    const commits = head.oid ? await readCommits(run, nextRefs) : []
     const root = (await git(run, ['rev-parse', '--show-toplevel']).catch(() => '')).trim() || null
     const before = refs
     refs = nextRefs
